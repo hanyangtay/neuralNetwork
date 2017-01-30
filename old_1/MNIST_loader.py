@@ -51,9 +51,9 @@ def load_data_nn():
     validation_Y = np.hstack((vectorised_result(y) for y in init_validation[1]))
     validation_data = [validation_X, validation_Y]
     
-    test_inputs = [np.reshape(x, (784, 1)) for x in init_test[0]]
-    test_results = [vectorised_result(y) for y in init_test[1]]
-    test_data = list(zip(test_inputs, test_results))
+    test_X = np.hstack((np.reshape(x, (784, 1)) for x in init_test[0]))
+    test_Y = np.hstack((y for y in init_test[1]))
+    test_data = [test_X, test_Y]
   
     return (training_data, validation_data, test_data)
     
