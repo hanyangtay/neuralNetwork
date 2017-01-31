@@ -50,19 +50,19 @@ class Network:
         
         Biases is a list of column vectors, corresponding to each output neuron.
         
-        Weights is a list of matrices.
+        Velocities (used for momentum) and weights are lists of matrices.
         Row of each matrix: output neurons
         Column of each matrix: Input neurons to each output neuron
         """
         
         self.biases = [np.random.randn(y, 1) for y in sizes[1:]]
+        self.velocities = [np.zeros((y,x)) for x, y in zip(sizes[:-1], sizes[1:])]
         self.weights = [np.random.randn(y, x)/np.sqrt(x)
                         for x, y in zip(sizes[:-1], sizes[1:])]
-        
         return
       
     def stochastic_gradient_descent(self, training_data, test_data, epochs,
-        mini_batch_size, learning_rate, reg_lambda = 0.0, 
+        mini_batch_size, learning_rate, reg_lambda = 0.0, momentum = 1.0,
                                    eval_train = True, eval_test = True):
         """
         Learning algorithm to minimise cost function
@@ -72,8 +72,8 @@ class Network:
         Set it to false to train the nn faster without showing performance
         """
         
-        n = len(training_data)
-        n_tests = len(test_data)
+        n = training_data[1].shape[1]
+        n_tests = test_data[1].shape[1]
         
         #initialise values
         training_cost = []
@@ -81,19 +81,22 @@ class Network:
         test_cost = []
         test_accuracy = []
 
-        
         for j in range(epochs):
-            random.shuffle(training_data)
+            
+            #shuffle training data
+            seed = np.random.permutation(n)
+            training_data[0] = np.transpose(np.transpose(training_data[0])[seed])
+            training_data[1] = np.transpose(np.transpose(training_data[1])[seed])
             
             #split into mini-batches
-            mini_batches = [training_data[k:k + mini_batch_size]
+            mini_batches = [(training_data[0][:, k:k+mini_batch_size],
+                            training_data[1][:, k:k+mini_batch_size])
                             for k in range(0, n, mini_batch_size)]
             
             for mini_batch in mini_batches:
-                
                 #Gradient descent on each mini-batch
                 self.update_mini_batch(mini_batch, learning_rate, reg_lambda, 
-                                       mini_batch_size, n)
+                                       momentum, mini_batch_size, n)
             
             print ("Epoch {} completed.".format(j+1))
             
@@ -118,7 +121,7 @@ class Network:
         return training_cost, training_accuracy, test_cost, test_accuracy
                 
     def update_mini_batch(self, mini_batch, learning_rate, reg_lambda,
-                          mini_batch_size, n):
+                          momentum, mini_batch_size, n):
         """
         Apply gradient descent using backpropagation to a mini batch.
         L2 regularisation - prevent overfitting by keep weights small
@@ -130,16 +133,18 @@ class Network:
         """
         
         
-        mini_batch_X = np.hstack((np.reshape(x, (784,1)) for x,y in mini_batch))
-        mini_batch_Y = np.hstack((y for x, y in mini_batch))
+        mini_batch_X = mini_batch[0]
+        mini_batch_Y = mini_batch[1]
         
         
         delta_b, delta_w = self.backprop(mini_batch_X, mini_batch_Y, 
                                          mini_batch_size)
 
-        self.weights = [(1 - learning_rate*(reg_lambda/n)) * w -
-                        learning_rate / mini_batch_size * new_w
-                        for w, new_w in zip(self.weights, delta_w)]
+        self.velocities = [ momentum * v - learning_rate / mini_batch_size * new_v
+                           for v, new_v in zip(self.velocities, delta_w)]
+
+        self.weights = [(1 - learning_rate*(reg_lambda/n)) * w + v
+                        for w, v in zip(self.weights, self.velocities)]
         
         self.biases = [b - learning_rate / mini_batch_size * new_b
                         for b, new_b in zip(self.biases, delta_b)]
@@ -228,10 +233,11 @@ class Network:
         Returns number of cases that are correctly classified.
         """
         
-        results = [(np.argmax(self.forward_prop(x)), np.argmax(y)) 
-                   for (x,y) in data]
+        predicted = np.argmax(self.forward_prop(data[0]), axis=0), 
+        actual = np.argmax(data[1], axis=0)
+                   
         
-        return sum(int(x==y) for (x, y) in results)
+        return np.sum(predicted == actual)
         
     def total_cost(self, data, n, reg_lambda):
         """
@@ -240,10 +246,10 @@ class Network:
         
         cost = 0.0
         
-        for x, y in data:
-            a = self.forward_prop(x)
-            cost += self.cost.fn(a, y) / n
-            
+        a = self.forward_prop(data[0])
+        cost = np.sum(self.cost.fn(a, data[1])) / n
+        
+        ### need to find out what linalg.norm does
         cost += 0.5 * (reg_lambda / n) * sum(np.linalg.norm(w)**2 for w in self.weights)
         return cost
     
