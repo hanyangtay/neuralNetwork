@@ -3,11 +3,15 @@ import random
 import json
 
 #activation function
-def sigmoid(z):
-    return 1.0/(1.0 + np.exp(-z))
-        
-def sigmoid_deriv(z):
-    return sigmoid(z) * (1 - sigmoid(z))
+
+class Sigmoid:
+    @staticmethod
+    def fn(z):
+        return 1.0/(1.0 + np.exp(-z))
+    
+    @staticmethod
+    def deriv(z):
+        return Sigmoid.fn(z) * (1 - Sigmoid.fn(z))
 
 class CrossEntropyCost:
     """
@@ -15,11 +19,11 @@ class CrossEntropyCost:
     measures prediction error
     
     y=0,
-        a=0, log(1-a) = log 1 = 0
-        a=1, log 0 = infinity
+        a=0, cost = log(1-a) = log 1 = 0
+        a=1, cost = log 0 = infinity
     y=1, 
-        a=0, -log(a) = infinity
-        a=1, log 1 = 0
+        a=0, cost = -log(a) = infinity
+        a=1, cost = log 1 = 0
     """
     
     @staticmethod
@@ -29,15 +33,32 @@ class CrossEntropyCost:
     @staticmethod
     def deriv(z, a, y):
         return (a-y)
+    
+class QuadraticCost:
+    """
+    Cost function
+    measures prediction error
+    
+    cost = 1/2 * sum (a-y)**2
+    """
+    @staticmethod
+    def fn(a, y):
+        return 0.5*np.linalg.norm(a-y)**2
+
+    @staticmethod
+    def deriv(z, a, y):
+        ########## ask for help
+        return (a-y) * Sigmoid.deriv(z)
         
 class Network:
     
-    def __init__(self, sizes, cost=CrossEntropyCost):
+    def __init__(self, sizes, activate=Sigmoid, cost=QuadraticCost):
         """
         Sizes refer to the number of neurons in each layer.
         """
         self.num_layers = len(sizes)
         self.sizes = sizes
+        self.activate = activate
         self.cost = cost
 
         """
@@ -132,10 +153,8 @@ class Network:
         and outputs of each training example respectively.
         """
         
-        
         mini_batch_X = mini_batch[0]
         mini_batch_Y = mini_batch[1]
-        
         
         delta_b, delta_w = self.backprop(mini_batch_X, mini_batch_Y, 
                                          mini_batch_size)
@@ -203,7 +222,7 @@ class Network:
         for b, w in zip(self.biases, self.weights):
             z = np.dot(w, activation) + b
             zs.append(z)
-            activation = sigmoid(z)
+            activation = self.activate.fn(z)
             activations.append(activation)
         
         #backprop
@@ -214,7 +233,7 @@ class Network:
         
         for l in range(2, self.num_layers):
             z = zs[-l]
-            delta = np.dot(self.weights[-l+1].transpose(), delta) * sigmoid_deriv(z)
+            delta = np.dot(self.weights[-l+1].transpose(), delta) * self.activate.deriv(z)
             delta_b[-l] = delta.sum(1).reshape([len(delta), 1])
             delta_w[-l] = np.dot(delta, activations[-l-1].transpose())
         
@@ -222,7 +241,7 @@ class Network:
     
     def forward_prop(self, a):
         for b, w in zip(self.biases, self.weights):
-                a = sigmoid(np.dot(w,a) + b)
+                a = self.activate.fn(np.dot(w,a) + b)
         return a
         
     
@@ -249,7 +268,7 @@ class Network:
         a = self.forward_prop(data[0])
         cost = np.sum(self.cost.fn(a, data[1])) / n
         
-        ### need to find out what linalg.norm does
+        #regularisation
         cost += 0.5 * (reg_lambda / n) * sum(np.linalg.norm(w)**2 for w in self.weights)
         return cost
     
